@@ -15,27 +15,52 @@ module.exports = function (spec) {
 
   spec = spec || {};
 
-  var OUTPUT_PADDING = spec.padding || '  ';
+  var NO_PRINT = '(anonymous)';
+  var INDENT = spec.padding || '  ';
+  var OUTPUT_PADDING = INDENT;
+  var SPLITTER = ': ';
 
   var output = through();
   var parser = tapOut();
   var stream = duplexer(parser, output);
   var startTime = new Date().getTime();
+  var prev = [];
 
   output.push('\n');
 
   parser.on('test', function (test) {
 
-    output.push('\n' + pad(format.underline(test.name)) + '\n\n');
+    // output.push('\n' + pad(format.bold(test.name)) + '\n\n');
+
+    if (test.name !== NO_PRINT) {
+
+      var splits = test.name.split(SPLITTER);
+      splits.forEach(function(s, i) {
+
+        if (!i) {
+          output.push('\n');
+        }
+        // New context at level i
+        indent(i);
+        if (prev[i] !== s) {
+          output.push(pad(format.bold(s)) + '\n');
+        }
+        outdent(i);
+      });
+
+      prev = splits;
+    }
   });
 
   // Passing assertions
   parser.on('pass', function (assertion) {
 
     var glyph = format.green(symbols.tick);
-    var name = format.dim(assertion.name);
+    var name = format.grey(assertion.name);
 
-    output.push(pad('  ' + glyph + ' ' + name + '\n'));
+    indent(prev.length);
+    output.push(pad(glyph + ' ' + name + '\n'));
+    outdent(prev.length);
   });
 
   // Failing assertions
@@ -43,22 +68,19 @@ module.exports = function (spec) {
 
     var glyph = symbols.cross;
     var title =  glyph + ' ' + assertion.name;
-    var raw = format.cyan(prettifyRawError(assertion.error.raw));
-    var divider = _.fill(
-      new Array((title).length + 1),
-      '-'
-    ).join('');
 
-    output.push('\n' + pad('  ' + format.red(title) + '\n'));
-    output.push(pad('  ' + format.red(divider) + '\n'));
-    output.push(raw);
+    indent(prev.length);
+    output.push(pad(format.red(title) + '\n'));
+    outdent(prev.length);
 
     stream.failed = true;
   });
 
   parser.on('comment', function (comment) {
 
-    output.push(pad('  ' + format.yellow(comment.raw)) + '\n');
+    indent(prev.length);
+    output.push(pad(format.yellow(comment.raw)) + '\n');
+    outdent(prev.length);
   });
 
   // All done
@@ -71,13 +93,13 @@ module.exports = function (spec) {
       process.exit(1);
     }
 
+    output.push(formatTotals(results));
+    output.push('\n\n\n');
+
     if (results.fail.length > 0) {
       output.push(formatErrors(results));
       output.push('\n');
     }
-
-    output.push(formatTotals(results));
-    output.push('\n\n\n');
 
     // Exit if no tests run. This is a result of 1 of 2 things:
     //  1. No tests were written
@@ -115,11 +137,13 @@ module.exports = function (spec) {
       return pad(format.red(symbols.cross + ' No tests found'));
     }
 
+    var pass = format.green(results.pass.length + ' passing');
+    var fail = format.red(results.fail.length + ' failing');
+    var time = format.grey('(' + prettyMs(new Date().getTime() - startTime) + ')');
+
     return _.filter([
-      pad('total:     ' + results.asserts.length),
-      pad(format.green('passing:   ' + results.pass.length)),
-      results.fail.length > 0 ? pad(format.red('failing:   ' + results.fail.length)) : undefined,
-      pad('duration:  ' + prettyMs(new Date().getTime() - startTime))
+      pad(pass + ' ' + time),
+      results.fail.length > 0 ? pad(fail) : undefined,
     ], _.identity).join('\n');
   }
 
@@ -135,14 +159,19 @@ module.exports = function (spec) {
 
       // Wrie failed assertion's test name
       var test = _.find(results.tests, {number: parseInt(testNumber)});
-      out += '\n' + pad('  ' + test.name + '\n\n');
+      indent();
+      out += '\n' + pad(test.name + '\n\n');
 
       // Write failed assertion
       _.each(assertions, function (assertion) {
 
-        out += pad('    ' + format.red(symbols.cross) + ' ' + format.red(assertion.name)) + '\n';
+        indent();
+        out += pad(format.red(symbols.cross) + ' ' + format.red(assertion.name)) + '\n';
+        out += format.cyan(prettifyRawError(assertion.error.raw));
+        outdent();
       });
 
+      outdent();
       out += '\n';
     });
 
@@ -152,6 +181,23 @@ module.exports = function (spec) {
   function pad (str) {
 
     return OUTPUT_PADDING + str;
+  }
+
+  function indent (i) {
+
+    if (typeof i === 'undefined') {
+      i = 1;
+    }
+    OUTPUT_PADDING += new Array(i + 1).join(INDENT);
+  }
+
+  function outdent (i) {
+
+    if (typeof i === 'undefined') {
+      i = 1;
+    }
+    var str = new Array(i + 1).join(INDENT);
+    OUTPUT_PADDING = OUTPUT_PADDING.replace(str, '');
   }
 
   return stream;
