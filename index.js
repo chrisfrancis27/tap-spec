@@ -30,19 +30,23 @@ module.exports = function (spec) {
 
   parser.on('test', function (test) {
 
-    // output.push('\n' + pad(format.bold(test.name)) + '\n\n');
-
     if (test.name !== NO_PRINT) {
 
+      // Split test name on given delimiter
       var splits = test.name.split(SPLITTER);
       splits.forEach(function(s, i) {
 
+        // Line-break before level-0 headings
         if (!i) {
           output.push('\n');
         }
-        // New context at level i
+        // New context at level-i
         indent(i);
         if (prev[i] !== s) {
+          // No match beyond this level so
+          // trim prev array down to size
+          prev = prev.slice(0, i);
+          prev[i] = s;
           output.push(pad(format.bold(s)) + '\n');
         }
         outdent(i);
