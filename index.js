@@ -11,14 +11,14 @@ var symbols = require('figures');
 
 var lTrimList = require('./lib/utils/l-trim-list');
 
-module.exports = function (spec) {
+module.exports = function (config) {
 
-  spec = spec || {};
-
-  var NO_PRINT = '(anonymous)';
-  var INDENT = spec.padding || '  ';
-  var OUTPUT_PADDING = INDENT;
-  var SPLITTER = ': ';
+  var NO_PRINT = config.noprint || '(anonymous)';
+  var PADDING = config.padding || 2;
+  var DELIMITER = new RegExp('\\s*' + (config.delimiter || ':') + '\\s*');
+  var HIDE_COMMENTS = config.comments === false;
+  var INDENT = new Array(PADDING + 1).join(' ');
+  var OUTPUT_PADDING = '';
 
   var output = through();
   var parser = tapOut();
@@ -32,24 +32,30 @@ module.exports = function (spec) {
 
     if (test.name !== NO_PRINT) {
 
-      // Split test name on given delimiter
-      var splits = test.name.split(SPLITTER);
+      // Split test name on given delimiter,
+      // filter out empty strings
+      var splits = test.name
+        .split(DELIMITER)
+        .filter(function(s) { return !!s; })
+      ;
       splits.forEach(function(s, i) {
 
         // Line-break before level-0 headings
         if (!i) {
           output.push('\n');
         }
-        // New context at level-i
-        indent(i);
-        if (prev[i] !== s) {
-          // No match beyond this level so
-          // trim prev array down to size
-          prev = prev.slice(0, i);
-          prev[i] = s;
-          output.push(pad(format.bold(s)) + '\n');
+        if (s) {
+          // New context at level-i
+          indent(i);
+          if (prev[i] !== s) {
+            // No match beyond this level so
+            // trim prev array down to size
+            prev = prev.slice(0, i);
+            prev[i] = s;
+            output.push(pad(format.bold(s)) + '\n');
+          }
+          outdent(i);
         }
-        outdent(i);
       });
 
       prev = splits;
@@ -82,9 +88,11 @@ module.exports = function (spec) {
 
   parser.on('comment', function (comment) {
 
-    indent(prev.length);
-    output.push(pad(format.yellow(comment.raw)) + '\n');
-    outdent(prev.length);
+    if (!HIDE_COMMENTS) {
+      indent(prev.length);
+      output.push(pad(format.yellow(comment.raw)) + '\n');
+      outdent(prev.length);
+    }
   });
 
   // All done
